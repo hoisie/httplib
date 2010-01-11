@@ -4,7 +4,7 @@ httplib.go is a simple http client library for Go. It will probably look like py
 
 ## Usage
 
-To use httplib.go, you must create a client, and then perform requests on the client. This is a small example:
+This is a small usage example:
 
     c := httplib.Client{}
     resp, err := c.Request ("http://google.com", "GET", nil, "")
