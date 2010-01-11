@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSecureCookie(t *testing.T) {
+func TestBasic(t *testing.T) {
 	client := Client{}
 	resp,err := client.Request("http://google.com/", "GET", nil, "")
 	if err != nil {

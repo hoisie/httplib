@@ -7,42 +7,42 @@
 package httplib
 
 import (
-	"bufio"
-	"bytes"
-	"container/vector"
-	"fmt"
-	"http"
-	"io"
-	"net"
-	"os"
-	"strconv"
-	"strings"
+    "bufio"
+    "bytes"
+    "container/vector"
+    "fmt"
+    "http"
+    "io"
+    "net"
+    "os"
+    "strconv"
+    "strings"
 )
 
 type Client struct {
-	conn net.Conn;
-	lastURL *http.URL;
+    conn    net.Conn
+    lastURL *http.URL
 }
 
 type Request struct {
-	URL *http.URL;
-	Method string;
-	Headers map[string]string
-	Body string
+    URL     *http.URL
+    Method  string
+    Headers map[string]string
+    Body    string
 }
 
 type Response struct {
-	Status int;
-	Headers map[string][]string;
-	Files map[string][]byte;
-	Body io.Reader;
+    Status  int
+    Headers map[string][]string
+    Files   map[string][]byte
+    Body    io.Reader
 }
 
 func (r *Response) getHeader(key string) (value string) {
     if lst, ok := r.Headers[key]; ok {
-    	value = lst[0]
+        value = lst[0]
     }
- 
+
     return
 }
 
@@ -50,8 +50,8 @@ func (r *Response) getHeader(key string) (value string) {
 // io.BufReader through which we read the response, and the underlying
 // network connection.
 type readClose struct {
-        io.Reader
-        io.Closer
+    io.Reader
+    io.Closer
 }
 
 func readLineBytes(b *bufio.Reader) (p []byte, err os.Error) {
@@ -67,7 +67,7 @@ func readLineBytes(b *bufio.Reader) (p []byte, err os.Error) {
         return nil, os.NewError("Header Line too long")
     }
 
-	// Chop off trailing white space.
+    // Chop off trailing white space.
     var i int
     for i = len(p); i > 0; i-- {
         if c := p[i-1]; c != ' ' && c != '\r' && c != '\t' && c != '\n' {
@@ -90,140 +90,141 @@ func readLine(b *bufio.Reader) (s string, err os.Error) {
 // and the Value can continue on multiple lines if each continuation line
 // starts with a space.
 func readKeyValue(b *bufio.Reader) (key, value string, err os.Error) {
-	line, e := readLineBytes(b)
-	if e != nil {
-		return "", "", e
-	}
-	if len(line) == 0 {
-		return "", "", nil
-	}
+    line, e := readLineBytes(b)
+    if e != nil {
+        return "", "", e
+    }
+    if len(line) == 0 {
+        return "", "", nil
+    }
 
-	// Scan first line for colon.
-	i := bytes.Index(line, []byte{':'})
-	if i < 0 {
-		goto Malformed
-	}
+    // Scan first line for colon.
+    i := bytes.Index(line, []byte{':'})
+    if i < 0 {
+        goto Malformed
+    }
 
-	key = string(line[0:i])
-	if strings.Index(key, " ") >= 0 {
-		// Key field has space - no good.
-		goto Malformed
-	}
+    key = string(line[0:i])
+    if strings.Index(key, " ") >= 0 {
+        // Key field has space - no good.
+        goto Malformed
+    }
 
-	// Skip initial space before value.
-	for i++; i < len(line); i++ {
-		if line[i] != ' ' {
-			break
-		}
-	}
-	value = string(line[i:])
+    // Skip initial space before value.
+    for i++; i < len(line); i++ {
+        if line[i] != ' ' {
+            break
+        }
+    }
+    value = string(line[i:])
 
-	// Look for extension lines, which must begin with space.
-	for {
-		c, e := b.ReadByte()
-		if c != ' ' {
-			if e != os.EOF {
-				b.UnreadByte()
-			}
-			break
-		}
+    // Look for extension lines, which must begin with space.
+    for {
+        c, e := b.ReadByte()
+        if c != ' ' {
+            if e != os.EOF {
+                b.UnreadByte()
+            }
+            break
+        }
 
-		// Eat leading space.
-		for c == ' ' {
-			if c, e = b.ReadByte(); e != nil {
-				if e == os.EOF {
-					e = io.ErrUnexpectedEOF
-				}
-				return "", "", e
-			}
-		}
-		b.UnreadByte()
+        // Eat leading space.
+        for c == ' ' {
+            if c, e = b.ReadByte(); e != nil {
+                if e == os.EOF {
+                    e = io.ErrUnexpectedEOF
+                }
+                return "", "", e
+            }
+        }
+        b.UnreadByte()
 
-		// Read the rest of the line and add to value.
-		if line, e = readLineBytes(b); e != nil {
-			return "", "", e
-		}
-		value += " " + string(line)
+        // Read the rest of the line and add to value.
+        if line, e = readLineBytes(b); e != nil {
+            return "", "", e
+        }
+        value += " " + string(line)
 
-		if len(value) >= 1024 {
-			return "", "", os.NewError("value too long for key " + key)
-		}
-	}
-	return key, value, nil
+        if len(value) >= 1024 {
+            return "", "", os.NewError("value too long for key " + key)
+        }
+    }
+    return key, value, nil
 
 Malformed:
-	return "", "", os.NewError("malformed header line " + string(line))
+    return "", "", os.NewError("malformed header line " + string(line))
 }
+
 type chunkedReader struct {
-	r   *bufio.Reader
-	n   uint64 // unread bytes in chunk
-	err os.Error
+    r   *bufio.Reader
+    n   uint64 // unread bytes in chunk
+    err os.Error
 }
 
 func newChunkedReader(r *bufio.Reader) *chunkedReader {
-	return &chunkedReader{r: r}
+    return &chunkedReader{r: r}
 }
 
 func (cr *chunkedReader) beginChunk() {
-	// chunk-size CRLF
-	var line string
-	line, cr.err = readLine(cr.r)
-	if cr.err != nil {
-		return
-	}
-	cr.n, cr.err = strconv.Btoui64(line, 16)
-	if cr.err != nil {
-		return
-	}
-	if cr.n == 0 {
-		// trailer CRLF
-		for {
-			line, cr.err = readLine(cr.r)
-			if cr.err != nil {
-				return
-			}
-			if line == "" {
-				break
-			}
-		}
-		cr.err = os.EOF
-	}
+    // chunk-size CRLF
+    var line string
+    line, cr.err = readLine(cr.r)
+    if cr.err != nil {
+        return
+    }
+    cr.n, cr.err = strconv.Btoui64(line, 16)
+    if cr.err != nil {
+        return
+    }
+    if cr.n == 0 {
+        // trailer CRLF
+        for {
+            line, cr.err = readLine(cr.r)
+            if cr.err != nil {
+                return
+            }
+            if line == "" {
+                break
+            }
+        }
+        cr.err = os.EOF
+    }
 }
 
 func (cr *chunkedReader) Read(b []uint8) (n int, err os.Error) {
-	if cr.err != nil {
-		return 0, cr.err
-	}
-	if cr.n == 0 {
-		cr.beginChunk()
-		if cr.err != nil {
-			return 0, cr.err
-		}
-	}
-	if uint64(len(b)) > cr.n {
-		b = b[0:cr.n]
-	}
-	n, cr.err = cr.r.Read(b)
-	cr.n -= uint64(n)
-	if cr.n == 0 && cr.err == nil {
-		// end of chunk (CRLF)
-		b := make([]byte, 2)
-		if _, cr.err = io.ReadFull(cr.r, b); cr.err == nil {
-			if b[0] != '\r' || b[1] != '\n' {
-				cr.err = os.NewError("malformed chunked encoding")
-			}
-		}
-	}
-	return n, cr.err
+    if cr.err != nil {
+        return 0, cr.err
+    }
+    if cr.n == 0 {
+        cr.beginChunk()
+        if cr.err != nil {
+            return 0, cr.err
+        }
+    }
+    if uint64(len(b)) > cr.n {
+        b = b[0:cr.n]
+    }
+    n, cr.err = cr.r.Read(b)
+    cr.n -= uint64(n)
+    if cr.n == 0 && cr.err == nil {
+        // end of chunk (CRLF)
+        b := make([]byte, 2)
+        if _, cr.err = io.ReadFull(cr.r, b); cr.err == nil {
+            if b[0] != '\r' || b[1] != '\n' {
+                cr.err = os.NewError("malformed chunked encoding")
+            }
+        }
+    }
+    return n, cr.err
 }
 
 func readResponse(r *bufio.Reader) (*Response, os.Error) {
     resp := new(Response)
 
-	// Parse the first line of the response.
+    // Parse the first line of the response.
     resp.Headers = make(map[string][]string)
 
-	line, err := readLine(r)
+    line, err := readLine(r)
     if err != nil {
         return nil, err
     }
@@ -236,7 +237,7 @@ func readResponse(r *bufio.Reader) (*Response, os.Error) {
         return nil, os.NewError("malformed HTTP status code")
     }
 
-	// Parse the response headers.
+    // Parse the response headers.
     for {
         key, value, err := readKeyValue(r)
         if err != nil {
@@ -245,42 +246,42 @@ func readResponse(r *bufio.Reader) (*Response, os.Error) {
         if key == "" {
             break // end of response header
         }
-        if _,ok := resp.Headers[key]; !ok {
-        	resp.Headers[key] = []string{}
+        if _, ok := resp.Headers[key]; !ok {
+            resp.Headers[key] = []string{}
         }
-        vec := vector.StringVector( resp.Headers[key] )
-        vec.Push ( value )
-        resp.Headers[key]=vec
+        vec := vector.StringVector(resp.Headers[key])
+        vec.Push(value)
+        resp.Headers[key] = vec
     }
 
-	return resp, nil
+    return resp, nil
 }
 
 
 func (req *Request) Write(buf io.Writer) (err os.Error) {
-	if _,err = fmt.Fprintf(buf, "%s %s HTTP/1.1\r\n", req.Method, req.URL.Path); err != nil {
-		return
-	}
-	
-	for name,val := range(req.Headers) {
-		if _,err = fmt.Fprintf(buf, "%s: %s\r\n", name, val); err != nil {
-			return
-		}
-	}
-	
-	if _,err = fmt.Fprintf(buf, "\r\n"); err != nil {
-		return;
-	}
-	
-	if cl, ok := req.Headers["Content-Length"]; ok {
-		//check if body-length
-		size,_ := strconv.Atoi(cl) 
-		if _,err = buf.Write ( strings.Bytes( req.Body[0:size] ) ); err != nil {
-			return
-		}
-	}
-	
-	return nil
+    if _, err = fmt.Fprintf(buf, "%s %s HTTP/1.1\r\n", req.Method, req.URL.Path); err != nil {
+        return
+    }
+
+    for name, val := range (req.Headers) {
+        if _, err = fmt.Fprintf(buf, "%s: %s\r\n", name, val); err != nil {
+            return
+        }
+    }
+
+    if _, err = fmt.Fprintf(buf, "\r\n"); err != nil {
+        return
+    }
+
+    if cl, ok := req.Headers["Content-Length"]; ok {
+        //check if body-length
+        size, _ := strconv.Atoi(cl)
+        if _, err = buf.Write(strings.Bytes(req.Body[0:size])); err != nil {
+            return
+        }
+    }
+
+    return nil
 
 }
 
@@ -288,61 +289,60 @@ func (req *Request) Write(buf io.Writer) (err os.Error) {
 // return true if the string includes a port.
 func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastIndex(s, "]") }
 
-func (client *Client) Request ( rawurl string, method string, headers map[string]string, body string ) (resp *Response, err os.Error) {
+func (client *Client) Request(rawurl string, method string, headers map[string]string, body string) (resp *Response, err os.Error) {
 
-	var url *http.URL;
-	
-	if headers == nil {
-		headers = map[string]string{}
-	}
-	
-	if url,err = http.ParseURL (rawurl); err != nil {
-		return nil, err;
-	}
-	
-	if client.conn == nil || client.lastURL.Host != url.Host {
-		addr := url.Host
-		if !hasPort(addr) {
-			addr += ":http"
-		}
-	
-		var conn net.Conn;
-		if conn, err = net.Dial("tcp", "", addr); err != nil {
-			return nil, err
-		}
-		client.conn = conn;
-	}
+    var url *http.URL
 
-	client.lastURL = url
-	req := Request { url, method, headers, body }
-	
-	err = req.Write ( client.conn )
-	if err != nil {
-		return nil, err
-	}
-	reader := bufio.NewReader(client.conn)
-	
-	resp, err = readResponse(reader)
-	
+    if headers == nil {
+        headers = map[string]string{}
+    }
+
+    if url, err = http.ParseURL(rawurl); err != nil {
+        return nil, err
+    }
+
+    if client.conn == nil || client.lastURL.Host != url.Host {
+        addr := url.Host
+        if !hasPort(addr) {
+            addr += ":http"
+        }
+
+        var conn net.Conn
+        if conn, err = net.Dial("tcp", "", addr); err != nil {
+            return nil, err
+        }
+        client.conn = conn
+    }
+
+    client.lastURL = url
+    req := Request{url, method, headers, body}
+
+    err = req.Write(client.conn)
+    if err != nil {
+        return nil, err
+    }
+    reader := bufio.NewReader(client.conn)
+
+    resp, err = readResponse(reader)
+
     if err != nil {
         client.conn.Close()
         return nil, err
     }
 
-	r := io.Reader(reader)
+    r := io.Reader(reader)
     if v := resp.getHeader("Transfer-Encoding"); v == "chunked" {
         r = newChunkedReader(reader)
     } else if v := resp.getHeader("Content-Length"); v != "" {
         n, err := strconv.Atoi64(v)
         if err != nil {
-            return nil, os.NewError ( "invalid Content-Length : " +v )
+            return nil, os.NewError("invalid Content-Length : " + v)
         }
         r = io.LimitReader(r, n)
     }
     resp.Body = readClose{r, client.conn}
 
-	return
+    return
 
-
-	return nil, nil
+    return nil, nil
 }
