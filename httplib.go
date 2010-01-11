@@ -19,6 +19,8 @@ import (
     "strings"
 )
 
+var debugprint = false
+
 type Client struct {
     conn    net.Conn
     lastURL *http.URL
@@ -230,7 +232,7 @@ func readResponse(r *bufio.Reader) (*Response, os.Error) {
     }
     f := strings.Split(line, " ", 3)
     if len(f) < 3 {
-        return nil, os.NewError("malformed HTTP response")
+        return nil, os.NewError("malformed HTTP response:" + line)
     }
     resp.Status, err = strconv.Atoi(f[1])
     if err != nil {
@@ -259,7 +261,14 @@ func readResponse(r *bufio.Reader) (*Response, os.Error) {
 
 
 func (req *Request) Write(buf io.Writer) (err os.Error) {
-    if _, err = fmt.Fprintf(buf, "%s %s HTTP/1.1\r\n", req.Method, req.URL.Path); err != nil {
+
+    uri := req.URL.Path
+
+    if req.URL.RawQuery != "" {
+        uri += "?" + req.URL.RawQuery
+    }
+
+    if _, err = fmt.Fprintf(buf, "%s %s HTTP/1.1\r\n", req.Method, uri); err != nil {
         return
     }
 
@@ -317,10 +326,17 @@ func (client *Client) Request(rawurl string, method string, headers map[string]s
     client.lastURL = url
     req := Request{url, method, headers, body}
 
+    if debugprint {
+        var buf bytes.Buffer
+        req.Write(&buf)
+        fmt.Printf("%#v\n", buf.String())
+    }
+
     err = req.Write(client.conn)
     if err != nil {
         return nil, err
     }
+
     reader := bufio.NewReader(client.conn)
 
     resp, err = readResponse(reader)
