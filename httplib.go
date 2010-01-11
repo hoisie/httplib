@@ -20,7 +20,7 @@ import (
 )
 
 type Client struct {
-	conn *net.Conn;
+	conn net.Conn;
 	lastURL *http.URL;
 }
 
@@ -28,6 +28,7 @@ type Request struct {
 	URL *http.URL;
 	Method string;
 	Headers map[string]string
+	Body string
 }
 
 type Response struct {
@@ -256,14 +257,31 @@ func readResponse(r *bufio.Reader) (*Response, os.Error) {
 }
 
 
-func (req *Request) Write(buf io.Writer) {
-	
-	fmt.Fprintf(buf, "%s HTTP/1.1 %s\r\n", req.Method, req.URL.Path)
-	for name,val := range(req.Headers) {
-		fmt.Fprintf(buf, "%s: %s\r\n", name, val)
+func (req *Request) Write(buf io.Writer) (err os.Error) {
+	if _,err = fmt.Fprintf(buf, "%s %s HTTP/1.1\r\n", req.Method, req.URL.Path); err != nil {
+		return
 	}
 	
-	fmt.Fprintf(buf, "\r\n")
+	for name,val := range(req.Headers) {
+		if _,err = fmt.Fprintf(buf, "%s: %s\r\n", name, val); err != nil {
+			return
+		}
+	}
+	
+	if _,err = fmt.Fprintf(buf, "\r\n"); err != nil {
+		return;
+	}
+	
+	if cl, ok := req.Headers["Content-Length"]; ok {
+		//check if body-length
+		size,_ := strconv.Atoi(cl) 
+		if _,err = buf.Write ( strings.Bytes( req.Body[0:size] ) ); err != nil {
+			return
+		}
+	}
+	
+	return nil
+
 }
 
 // Given a string of the form "host", "host:port", or "[ipv6::address]:port",
@@ -273,36 +291,41 @@ func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastInd
 func (client *Client) Request ( rawurl string, method string, headers map[string]string, body string ) (resp *Response, err os.Error) {
 
 	var url *http.URL;
-	var conn net.Conn;
+	
+	if headers == nil {
+		headers = map[string]string{}
+	}
 	
 	if url,err = http.ParseURL (rawurl); err != nil {
 		return nil, err;
 	}
 	
 	if client.conn == nil || client.lastURL.Host != url.Host {
-	
 		addr := url.Host
 		if !hasPort(addr) {
 			addr += ":http"
 		}
 	
+		var conn net.Conn;
 		if conn, err = net.Dial("tcp", "", addr); err != nil {
 			return nil, err
 		}
-		client.conn = &conn;
+		client.conn = conn;
 	}
 
 	client.lastURL = url
-		
-	req := Request { url, method, headers }
+	req := Request { url, method, headers, body }
 	
-	req.Write ( conn )
-	
-	reader := bufio.NewReader(conn)
+	err = req.Write ( client.conn )
+	if err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReader(client.conn)
 	
 	resp, err = readResponse(reader)
+	
     if err != nil {
-        conn.Close()
+        client.conn.Close()
         return nil, err
     }
 
@@ -316,7 +339,7 @@ func (client *Client) Request ( rawurl string, method string, headers map[string
         }
         r = io.LimitReader(r, n)
     }
-    resp.Body = readClose{r, conn}
+    resp.Body = readClose{r, client.conn}
 
 	return
 
