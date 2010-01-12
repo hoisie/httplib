@@ -6,7 +6,7 @@ httplib.go is a simple http client library for Go. It will probably look like py
 
 This is a small usage example:
 
-    c := httplib.Client{}
+    c := new(httplib.Client)
     resp, err := c.Request ("http://google.com", "GET", nil, "")
     data := ioutil.ReadAll( resp.Body )
     println(string(data))

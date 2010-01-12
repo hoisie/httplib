@@ -6,7 +6,7 @@ import (
 )
 
 func TestBasic(t *testing.T) {
-	client := Client{}
+	client := new(Client)
 	resp,err := client.Request("http://google.com/", "GET", nil, "")
 	if err != nil {
 		t.Fatalf(err.String())
