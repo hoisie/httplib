@@ -302,13 +302,22 @@ func (client *Client) Request(rawurl string, method string, headers map[string]s
 
     var url *http.URL
 
+    if url, err = http.ParseURL(rawurl); err != nil {
+        return nil, err
+    }
+
     if headers == nil {
         headers = map[string]string{}
     }
 
-    if url, err = http.ParseURL(rawurl); err != nil {
-        return nil, err
+    if _,ok := headers["User-Agent"]; !ok {
+	headers["User-Agent"]= "httplib.go"
     }
+
+    if _,ok := headers["Host"]; !ok {
+	headers["Host"]= url.Host
+    }
+
 
     if client.conn == nil || client.lastURL.Host != url.Host {
         addr := url.Host
