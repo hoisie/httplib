@@ -1,6 +1,8 @@
 
 ## About
-httplib.go is a simple http client library for Go. It will probably look like python's [httplib2](http://code.google.com/p/httplib2/wiki/Examples)
+httplib.go is a simple http client library for Go. 
+
+It supports all the features of go's http client package, as well as generic requests and keep-alive connections. 
 
 ## Usage
 
