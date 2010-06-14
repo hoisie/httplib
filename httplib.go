@@ -285,7 +285,7 @@ func (req *Request) Write(buf io.Writer) (err os.Error) {
     if cl, ok := req.Headers["Content-Length"]; ok {
         //check if body-length
         size, _ := strconv.Atoi(cl)
-        if _, err = buf.Write(strings.Bytes(req.Body[0:size])); err != nil {
+        if _, err = buf.Write([]byte(req.Body[0:size])); err != nil {
             return
         }
     }
