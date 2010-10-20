@@ -46,6 +46,7 @@ func newConn(url *http.URL) (*http.ClientConn, os.Error) {
 }
 
 func getResponse(req *http.Request) (*http.Response, os.Error) {
+    println("url", req.RawURL)
     url, err := http.ParseURL(req.RawURL)
     if err != nil {
         return nil, err
@@ -116,7 +117,7 @@ func (client *Client) Request(rawurl string, method string, headers map[string]s
 
 type RequestBuilder interface {
     Header(key, value string) RequestBuilder
-    Data(key, value string) RequestBuilder
+    Param(key, value string) RequestBuilder
     Body(data interface{}) RequestBuilder
     AsString() (string, os.Error)
     AsFile(filename string) os.Error
@@ -142,11 +143,11 @@ func (b *HttpGetRequestBuilder) Header(key, value string) RequestBuilder {
     return b
 }
 
-func (b *HttpGetRequestBuilder) Data(key, value string) RequestBuilder {
+func (b *HttpGetRequestBuilder) Param(key, value string) RequestBuilder {
     if strings.Index(b.req.RawURL, "?") != -1 {
-        b.req.RawURL = b.req.RawURL + fmt.Sprintf("&%s=%s", key, value)
+        b.req.RawURL = b.req.RawURL + fmt.Sprintf("&%s=%s", http.URLEscape(key), http.URLEscape(value))
     } else {
-        b.req.RawURL = b.req.RawURL + fmt.Sprintf("?%s=%s", key, value)
+        b.req.RawURL = b.req.RawURL + fmt.Sprintf("?%s=%s", http.URLEscape(key), http.URLEscape(value))
     }
     return b
 }
