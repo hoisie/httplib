@@ -20,3 +20,14 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("No data available\n")
 	}
 }
+
+func TestFluid(t *testing.T) {
+        s,err := Get("http://www.google.com").AsString()
+        if err != nil {
+                t.Fatalf(err.String())
+        }
+        if len(s) == 0 {
+                t.Fatalf("No data available\n")
+        }
+}
+
