@@ -2,7 +2,6 @@ package httplib
 
 import (
     "bytes"
-    "fmt"
     "http"
     "io"
     "io/ioutil"
@@ -46,7 +45,6 @@ func newConn(url *http.URL) (*http.ClientConn, os.Error) {
 }
 
 func getResponse(req *http.Request) (*http.Response, os.Error) {
-    println("url", req.RawURL)
     url, err := http.ParseURL(req.RawURL)
     if err != nil {
         return nil, err
@@ -69,7 +67,6 @@ func getResponse(req *http.Request) (*http.Response, os.Error) {
     }
     return resp, nil
 }
-
 
 func (client *Client) Request(rawurl string, method string, headers map[string]string, body string) (*http.Response, os.Error) {
     var url *http.URL
@@ -120,6 +117,7 @@ type RequestBuilder interface {
     Param(key, value string) RequestBuilder
     Body(data interface{}) RequestBuilder
     AsString() (string, os.Error)
+    AsBytes() ([]byte, os.Error)
     AsFile(filename string) os.Error
     AsResponse() (*http.Response, os.Error)
 }
@@ -130,29 +128,62 @@ func Get(url string) RequestBuilder {
     req.Method = "GET"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
-    return &HttpGetRequestBuilder{url, &req}
+    return &HttpRequestBuilder{url, &req, map[string]string{}}
 }
 
-type HttpGetRequestBuilder struct {
-    url string
-    req *http.Request
+func Post(url string) RequestBuilder {
+    var req http.Request
+    req.RawURL = url
+    req.Method = "POST"
+    req.Header = map[string]string{}
+    req.UserAgent = defaultUserAgent
+    return &HttpRequestBuilder{url, &req, map[string]string{}}
 }
 
-func (b *HttpGetRequestBuilder) Header(key, value string) RequestBuilder {
+type HttpRequestBuilder struct {
+    url    string
+    req    *http.Request
+    params map[string]string
+}
+
+func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
+    var paramBody string
+    if b.params != nil {
+        var buf bytes.Buffer
+        for k, v := range b.params {
+            buf.WriteString(http.URLEscape(k))
+            buf.WriteByte('=')
+            buf.WriteString(http.URLEscape(v))
+            buf.WriteByte('&')
+        }
+        paramBody = buf.String()
+        paramBody = paramBody[0 : len(paramBody)-1]
+    }
+    if b.req.Method == "GET" && len(paramBody) > 0 {
+        if strings.Index(b.req.RawURL, "?") != -1 {
+            b.req.RawURL += "&" + paramBody
+        } else {
+            b.req.RawURL = b.req.RawURL + "?" + paramBody
+        }
+    } else if b.req.Method == "POST" && b.req.Body == nil && len(paramBody) > 0 {
+        b.req.Body = nopCloser{bytes.NewBufferString(paramBody)}
+        b.req.ContentLength = int64(len(paramBody))
+    }
+
+    return getResponse(b.req)
+}
+
+func (b *HttpRequestBuilder) Header(key, value string) RequestBuilder {
     b.req.Header[key] = value
     return b
 }
 
-func (b *HttpGetRequestBuilder) Param(key, value string) RequestBuilder {
-    if strings.Index(b.req.RawURL, "?") != -1 {
-        b.req.RawURL = b.req.RawURL + fmt.Sprintf("&%s=%s", http.URLEscape(key), http.URLEscape(value))
-    } else {
-        b.req.RawURL = b.req.RawURL + fmt.Sprintf("?%s=%s", http.URLEscape(key), http.URLEscape(value))
-    }
+func (b *HttpRequestBuilder) Param(key, value string) RequestBuilder {
+    b.params[key] = value
     return b
 }
 
-func (b *HttpGetRequestBuilder) Body(data interface{}) RequestBuilder {
+func (b *HttpRequestBuilder) Body(data interface{}) RequestBuilder {
     switch t := data.(type) {
     case string:
         b.req.Body = getNopCloser(t)
@@ -160,8 +191,8 @@ func (b *HttpGetRequestBuilder) Body(data interface{}) RequestBuilder {
     return b
 }
 
-func (b *HttpGetRequestBuilder) AsString() (string, os.Error) {
-    resp, err := getResponse(b.req)
+func (b *HttpRequestBuilder) AsString() (string, os.Error) {
+    resp, err := b.getResponse()
 
     data, err := ioutil.ReadAll(resp.Body)
     if err != nil {
@@ -171,12 +202,23 @@ func (b *HttpGetRequestBuilder) AsString() (string, os.Error) {
     return string(data), nil
 }
 
-func (b *HttpGetRequestBuilder) AsFile(filename string) os.Error {
+func (b *HttpRequestBuilder) AsBytes() ([]byte, os.Error) {
+    resp, err := b.getResponse()
+
+    data, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+
+    return data, nil
+}
+
+func (b *HttpRequestBuilder) AsFile(filename string) os.Error {
     f, err := os.Open(filename, os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         return err
     }
-    resp, err := getResponse(b.req)
+    resp, err := b.getResponse()
     _, err = io.Copy(f, resp.Body)
     if err != nil {
         return err
@@ -184,6 +226,6 @@ func (b *HttpGetRequestBuilder) AsFile(filename string) os.Error {
     return nil
 }
 
-func (b *HttpGetRequestBuilder) AsResponse() (*http.Response, os.Error) {
-    return getResponse(b.req)
+func (b *HttpRequestBuilder) AsResponse() (*http.Response, os.Error) {
+    return b.getResponse()
 }
