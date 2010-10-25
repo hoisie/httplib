@@ -42,3 +42,12 @@ func TestFluidPost(t *testing.T) {
         }
 }
 
+func TestInvalid(t *testing.T) {
+        s,err := Post("http://invalidurlsdfsdfasdfsdgf:9999/post").AsString()
+        if err != nil {
+                t.Fatalf(err.String())
+        }
+        if len(s) == 0 {
+                t.Fatalf("No data available\n")
+        }
+}

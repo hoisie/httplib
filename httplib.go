@@ -140,6 +140,24 @@ func Post(url string) RequestBuilder {
     return &HttpRequestBuilder{url, &req, map[string]string{}}
 }
 
+func Put(url string) RequestBuilder {
+    var req http.Request
+    req.RawURL = url
+    req.Method = "PUT"
+    req.Header = map[string]string{}
+    req.UserAgent = defaultUserAgent
+    return &HttpRequestBuilder{url, &req, map[string]string{}}
+}
+
+func Delete(url string) RequestBuilder {
+    var req http.Request
+    req.RawURL = url
+    req.Method = "DELETE"
+    req.Header = map[string]string{}
+    req.UserAgent = defaultUserAgent
+    return &HttpRequestBuilder{url, &req, map[string]string{}}
+}
+
 type HttpRequestBuilder struct {
     url    string
     req    *http.Request
@@ -148,7 +166,7 @@ type HttpRequestBuilder struct {
 
 func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
     var paramBody string
-    if b.params != nil {
+    if b.params != nil && len(b.params) > 0 {
         var buf bytes.Buffer
         for k, v := range b.params {
             buf.WriteString(http.URLEscape(k))
@@ -193,7 +211,12 @@ func (b *HttpRequestBuilder) Body(data interface{}) RequestBuilder {
 
 func (b *HttpRequestBuilder) AsString() (string, os.Error) {
     resp, err := b.getResponse()
-
+    if err != nil {
+        return "", err
+    }
+    if resp.Body == nil {
+        return "", nil
+    }
     data, err := ioutil.ReadAll(resp.Body)
     if err != nil {
         return "", err
@@ -204,7 +227,12 @@ func (b *HttpRequestBuilder) AsString() (string, os.Error) {
 
 func (b *HttpRequestBuilder) AsBytes() ([]byte, os.Error) {
     resp, err := b.getResponse()
-
+    if err != nil {
+        return nil, err
+    }
+    if resp.Body == nil {
+        return nil, nil
+    }
     data, err := ioutil.ReadAll(resp.Body)
     if err != nil {
         return nil, err
@@ -218,7 +246,15 @@ func (b *HttpRequestBuilder) AsFile(filename string) os.Error {
     if err != nil {
         return err
     }
+    defer f.Close()
+
     resp, err := b.getResponse()
+    if err != nil {
+        return err
+    }
+    if resp.Body == nil {
+        return nil
+    }
     _, err = io.Copy(f, resp.Body)
     if err != nil {
         return err
