@@ -25,8 +25,8 @@ type nopCloser struct {
 
 func (nopCloser) Close() os.Error { return nil }
 
-func getNopCloser(s string) nopCloser {
-    return nopCloser{bytes.NewBufferString(s)}
+func getNopCloser(buf *bytes.Buffer) nopCloser {
+    return nopCloser{buf}
 }
 
 func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastIndex(s, "]") }
@@ -204,7 +204,11 @@ func (b *HttpRequestBuilder) Param(key, value string) RequestBuilder {
 func (b *HttpRequestBuilder) Body(data interface{}) RequestBuilder {
     switch t := data.(type) {
     case string:
-        b.req.Body = getNopCloser(t)
+        b.req.Body = getNopCloser(bytes.NewBufferString(t))
+        b.req.ContentLength = int64(len(t))
+    case []byte:
+        b.req.Body = getNopCloser(bytes.NewBuffer(t))
+        b.req.ContentLength = int64(len(t))
     }
     return b
 }
