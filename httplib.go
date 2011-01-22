@@ -2,6 +2,7 @@ package httplib
 
 import (
     "bytes"
+    "crypto/tls"
     "http"
     "io"
     "io/ioutil"
@@ -34,22 +35,42 @@ func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastInd
 func newConn(url *http.URL) (*http.ClientConn, os.Error) {
     addr := url.Host
     if !hasPort(addr) {
-        addr += ":http"
+        addr += ":" + url.Scheme
     }
-    tcpConn, err := net.Dial("tcp", "", addr)
-    if err != nil {
-        return nil, err
+    var conn net.Conn
+    var err os.Error
+    if url.Scheme == "http" {
+        conn, err = net.Dial("tcp", "", addr)
+        if err != nil {
+            return nil, err
+        }
+    } else { // https
+        conn, err = tls.Dial("tcp", "", addr, nil)
+        if err != nil {
+            return nil, err
+        }
+        h := url.Host
+        if hasPort(h) {
+            h = h[0:strings.LastIndex(h, ":")]
+        }
+        if err := conn.(*tls.Conn).VerifyHostname(h); err != nil {
+            return nil, err
+        }
     }
 
-    return http.NewClientConn(tcpConn, nil), nil
+    return http.NewClientConn(conn, nil), nil
 }
 
-func getResponse(req *http.Request) (*http.Response, os.Error) {
-    url, err := http.ParseURL(req.RawURL)
+func getResponse(rawUrl string, req *http.Request) (*http.Response, os.Error) {
+    url, err := http.ParseURL(rawUrl)
     if err != nil {
         return nil, err
     }
     req.URL = url
+    if debugprint {
+        dump, _ := http.DumpRequest(req, true)
+        print(string(dump))
+    }
 
     conn, err := newConn(url)
     if err != nil {
@@ -63,7 +84,9 @@ func getResponse(req *http.Request) (*http.Response, os.Error) {
 
     resp, err := conn.Read()
     if err != nil {
-        return nil, err
+        if err != http.ErrPersistEOF {
+            return nil, err
+        }
     }
     return resp, nil
 }
@@ -124,7 +147,6 @@ type RequestBuilder interface {
 
 func Get(url string) RequestBuilder {
     var req http.Request
-    req.RawURL = url
     req.Method = "GET"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
@@ -133,7 +155,6 @@ func Get(url string) RequestBuilder {
 
 func Post(url string) RequestBuilder {
     var req http.Request
-    req.RawURL = url
     req.Method = "POST"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
@@ -142,7 +163,6 @@ func Post(url string) RequestBuilder {
 
 func Put(url string) RequestBuilder {
     var req http.Request
-    req.RawURL = url
     req.Method = "PUT"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
@@ -151,7 +171,6 @@ func Put(url string) RequestBuilder {
 
 func Delete(url string) RequestBuilder {
     var req http.Request
-    req.RawURL = url
     req.Method = "DELETE"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
@@ -188,7 +207,7 @@ func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
         b.req.ContentLength = int64(len(paramBody))
     }
 
-    return getResponse(b.req)
+    return getResponse(b.url, b.req)
 }
 
 func (b *HttpRequestBuilder) Header(key, value string) RequestBuilder {
