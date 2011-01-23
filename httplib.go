@@ -197,10 +197,10 @@ func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
         paramBody = paramBody[0 : len(paramBody)-1]
     }
     if b.req.Method == "GET" && len(paramBody) > 0 {
-        if strings.Index(b.req.RawURL, "?") != -1 {
-            b.req.RawURL += "&" + paramBody
+        if strings.Index(b.url, "?") != -1 {
+            b.url += "&" + paramBody
         } else {
-            b.req.RawURL = b.req.RawURL + "?" + paramBody
+            b.url = b.url + "?" + paramBody
         }
     } else if b.req.Method == "POST" && b.req.Body == nil && len(paramBody) > 0 {
         b.req.Body = nopCloser{bytes.NewBufferString(paramBody)}
