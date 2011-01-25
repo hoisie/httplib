@@ -61,10 +61,10 @@ func newConn(url *http.URL) (*http.ClientConn, os.Error) {
     return http.NewClientConn(conn, nil), nil
 }
 
-func getResponse(rawUrl string, req *http.Request) (*http.Response, os.Error) {
+func getResponse(rawUrl string, req *http.Request) (*http.ClientConn, *http.Response, os.Error) {
     url, err := http.ParseURL(rawUrl)
     if err != nil {
-        return nil, err
+        return nil, nil, err
     }
     req.URL = url
     if debugprint {
@@ -74,21 +74,21 @@ func getResponse(rawUrl string, req *http.Request) (*http.Response, os.Error) {
 
     conn, err := newConn(url)
     if err != nil {
-        return nil, err
+        return nil, nil, err
     }
 
     err = conn.Write(req)
     if err != nil {
-        return nil, err
+        return nil, nil, err
     }
 
     resp, err := conn.Read()
     if err != nil {
         if err != http.ErrPersistEOF {
-            return nil, err
+            return nil, nil, err
         }
     }
-    return resp, nil
+    return conn, resp, nil
 }
 
 func (client *Client) Request(rawurl string, method string, headers map[string]string, body string) (*http.Response, os.Error) {
@@ -135,51 +135,42 @@ func (client *Client) Request(rawurl string, method string, headers map[string]s
     return resp, nil
 }
 
-type RequestBuilder interface {
-    Header(key, value string) RequestBuilder
-    Param(key, value string) RequestBuilder
-    Body(data interface{}) RequestBuilder
-    AsString() (string, os.Error)
-    AsBytes() ([]byte, os.Error)
-    AsFile(filename string) os.Error
-    AsResponse() (*http.Response, os.Error)
-}
-
-func Get(url string) RequestBuilder {
+func Get(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "GET"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
-    return &HttpRequestBuilder{url, &req, map[string]string{}}
+    return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
-func Post(url string) RequestBuilder {
+func Post(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "POST"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
-    return &HttpRequestBuilder{url, &req, map[string]string{}}
+    return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
-func Put(url string) RequestBuilder {
+func Put(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "PUT"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
-    return &HttpRequestBuilder{url, &req, map[string]string{}}
+    return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
-func Delete(url string) RequestBuilder {
+func Delete(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "DELETE"
     req.Header = map[string]string{}
     req.UserAgent = defaultUserAgent
-    return &HttpRequestBuilder{url, &req, map[string]string{}}
+    return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
 type HttpRequestBuilder struct {
     url    string
     req    *http.Request
+    clientConn *http.ClientConn
     params map[string]string
 }
 
@@ -203,24 +194,27 @@ func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
             b.url = b.url + "?" + paramBody
         }
     } else if b.req.Method == "POST" && b.req.Body == nil && len(paramBody) > 0 {
+        b.Header("Content-Type", "application/x-www-form-urlencoded")
         b.req.Body = nopCloser{bytes.NewBufferString(paramBody)}
         b.req.ContentLength = int64(len(paramBody))
     }
 
-    return getResponse(b.url, b.req)
+    conn, resp, err :=  getResponse(b.url, b.req)
+    b.clientConn = conn
+    return resp,err
 }
 
-func (b *HttpRequestBuilder) Header(key, value string) RequestBuilder {
+func (b *HttpRequestBuilder) Header(key, value string) *HttpRequestBuilder {
     b.req.Header[key] = value
     return b
 }
 
-func (b *HttpRequestBuilder) Param(key, value string) RequestBuilder {
+func (b *HttpRequestBuilder) Param(key, value string) *HttpRequestBuilder {
     b.params[key] = value
     return b
 }
 
-func (b *HttpRequestBuilder) Body(data interface{}) RequestBuilder {
+func (b *HttpRequestBuilder) Body(data interface{}) *HttpRequestBuilder {
     switch t := data.(type) {
     case string:
         b.req.Body = getNopCloser(bytes.NewBufferString(t))
@@ -287,4 +281,13 @@ func (b *HttpRequestBuilder) AsFile(filename string) os.Error {
 
 func (b *HttpRequestBuilder) AsResponse() (*http.Response, os.Error) {
     return b.getResponse()
+}
+
+func (b *HttpRequestBuilder) Close() {
+    if b.clientConn != nil {
+        tcpConn, _ := b.clientConn.Close()
+        if tcpConn != nil {
+            tcpConn.Close()
+        }
+    }
 }
