@@ -168,10 +168,10 @@ func Delete(url string) *HttpRequestBuilder {
 }
 
 type HttpRequestBuilder struct {
-    url    string
-    req    *http.Request
+    url        string
+    req        *http.Request
     clientConn *http.ClientConn
-    params map[string]string
+    params     map[string]string
 }
 
 func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
@@ -199,9 +199,9 @@ func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
         b.req.ContentLength = int64(len(paramBody))
     }
 
-    conn, resp, err :=  getResponse(b.url, b.req)
+    conn, resp, err := getResponse(b.url, b.req)
     b.clientConn = conn
-    return resp,err
+    return resp, err
 }
 
 func (b *HttpRequestBuilder) Header(key, value string) *HttpRequestBuilder {
