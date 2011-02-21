@@ -77,12 +77,7 @@ func getResponse(rawUrl string, req *http.Request) (*http.ClientConn, *http.Resp
         return nil, nil, err
     }
 
-    err = conn.Write(req)
-    if err != nil {
-        return nil, nil, err
-    }
-
-    resp, err := conn.Read()
+    resp, err := conn.Do(req)
     if err != nil {
         if err != http.ErrPersistEOF {
             return nil, nil, err
@@ -121,13 +116,8 @@ func (client *Client) Request(rawurl string, method string, headers map[string]s
         dump, _ := http.DumpRequest(&req, true)
         print(string(dump))
     }
-
-    err = client.conn.Write(&req)
-    if err != nil {
-        return nil, err
-    }
-
-    resp, err := client.conn.Read()
+    
+    resp, err := client.conn.Do(&req)
     if err != nil {
         return nil, err
     }
