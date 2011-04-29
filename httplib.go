@@ -40,12 +40,12 @@ func newConn(url *http.URL) (*http.ClientConn, os.Error) {
     var conn net.Conn
     var err os.Error
     if url.Scheme == "http" {
-        conn, err = net.Dial("tcp", "", addr)
+        conn, err = net.Dial("tcp", addr)
         if err != nil {
             return nil, err
         }
     } else { // https
-        conn, err = tls.Dial("tcp", "", addr, nil)
+        conn, err = tls.Dial("tcp", addr, nil)
         if err != nil {
             return nil, err
         }
@@ -86,49 +86,10 @@ func getResponse(rawUrl string, req *http.Request) (*http.ClientConn, *http.Resp
     return conn, resp, nil
 }
 
-func (client *Client) Request(rawurl string, method string, headers map[string]string, body string) (*http.Response, os.Error) {
-    var url *http.URL
-    var err os.Error
-    if url, err = http.ParseURL(rawurl); err != nil {
-        return nil, err
-    }
-
-    if client.conn == nil || client.lastURL.Host != url.Host {
-        client.conn, err = newConn(url)
-    }
-
-    if headers == nil {
-        headers = map[string]string{}
-    }
-
-    client.lastURL = url
-    var req http.Request
-    req.URL = url
-    req.Method = method
-    req.Header = headers
-    req.UserAgent = headers["User-Agent"]
-    if req.UserAgent == "" {
-        req.UserAgent = "httplib.go"
-    }
-    req.Body = nopCloser{bytes.NewBufferString(body)}
-
-    if debugprint {
-        dump, _ := http.DumpRequest(&req, true)
-        print(string(dump))
-    }
-    
-    resp, err := client.conn.Do(&req)
-    if err != nil {
-        return nil, err
-    }
-
-    return resp, nil
-}
-
 func Get(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "GET"
-    req.Header = map[string]string{}
+    req.Header = http.Header{}
     req.UserAgent = defaultUserAgent
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
@@ -136,7 +97,7 @@ func Get(url string) *HttpRequestBuilder {
 func Post(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "POST"
-    req.Header = map[string]string{}
+    req.Header = http.Header{}
     req.UserAgent = defaultUserAgent
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
@@ -144,7 +105,7 @@ func Post(url string) *HttpRequestBuilder {
 func Put(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "PUT"
-    req.Header = map[string]string{}
+    req.Header = http.Header{}
     req.UserAgent = defaultUserAgent
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
@@ -152,7 +113,7 @@ func Put(url string) *HttpRequestBuilder {
 func Delete(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "DELETE"
-    req.Header = map[string]string{}
+    req.Header = http.Header{}
     req.UserAgent = defaultUserAgent
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
@@ -195,7 +156,7 @@ func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
 }
 
 func (b *HttpRequestBuilder) Header(key, value string) *HttpRequestBuilder {
-    b.req.Header[key] = value
+    b.req.Header.Set(key, value)
     return b
 }
 
@@ -249,7 +210,7 @@ func (b *HttpRequestBuilder) AsBytes() ([]byte, os.Error) {
 }
 
 func (b *HttpRequestBuilder) AsFile(filename string) os.Error {
-    f, err := os.Open(filename, os.O_RDWR|os.O_CREATE, 0644)
+    f, err := os.Create(filename)
     if err != nil {
         return err
     }
@@ -275,9 +236,6 @@ func (b *HttpRequestBuilder) AsResponse() (*http.Response, os.Error) {
 
 func (b *HttpRequestBuilder) Close() {
     if b.clientConn != nil {
-        tcpConn, _ := b.clientConn.Close()
-        if tcpConn != nil {
-            tcpConn.Close()
-        }
+        b.clientConn.Close()
     }
 }
