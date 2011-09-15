@@ -9,6 +9,7 @@ import (
     "net"
     "os"
     "strings"
+    "url"
 )
 
 var defaultUserAgent = "httplib.go"
@@ -17,7 +18,7 @@ var debugprint = false
 
 type Client struct {
     conn    *http.ClientConn
-    lastURL *http.URL
+    lastURL *url.URL
 }
 
 type nopCloser struct {
@@ -32,8 +33,12 @@ func getNopCloser(buf *bytes.Buffer) nopCloser {
 
 func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastIndex(s, "]") }
 
-func newConn(url *http.URL) (*http.ClientConn, os.Error) {
+func newConn(url *url.URL) (*http.ClientConn, os.Error) {
     addr := url.Host
+    //just set the default scheme to http
+    if url.Scheme == "" {
+        url.Scheme = "http"
+    }
     if !hasPort(addr) {
         addr += ":" + url.Scheme
     }
@@ -62,18 +67,27 @@ func newConn(url *http.URL) (*http.ClientConn, os.Error) {
 }
 
 func getResponse(rawUrl string, req *http.Request) (*http.ClientConn, *http.Response, os.Error) {
-    url, err := http.ParseURL(rawUrl)
+    url, err := url.Parse(rawUrl)
+    if url.Scheme == "" {
+        rawUrl = "http://" + rawUrl
+        url, err = url.Parse(rawUrl)
+    }
+
     if err != nil {
         return nil, nil, err
     }
     req.URL = url
     if debugprint {
-        dump, _ := http.DumpRequest(req, true)
+        dump, err := http.DumpRequest(req, true)
+        if err != nil {
+            println(err.String())
+        }
         print(string(dump))
     }
 
     conn, err := newConn(url)
     if err != nil {
+        println(err.String())
         return nil, nil, err
     }
 
@@ -90,7 +104,7 @@ func Get(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "GET"
     req.Header = http.Header{}
-    req.UserAgent = defaultUserAgent
+    req.Header.Set("User-Agent", defaultUserAgent)
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
@@ -98,7 +112,7 @@ func Post(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "POST"
     req.Header = http.Header{}
-    req.UserAgent = defaultUserAgent
+    req.Header.Set("User-Agent", defaultUserAgent)
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
@@ -106,7 +120,7 @@ func Put(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "PUT"
     req.Header = http.Header{}
-    req.UserAgent = defaultUserAgent
+    req.Header.Set("User-Agent", defaultUserAgent)
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
@@ -114,7 +128,7 @@ func Delete(url string) *HttpRequestBuilder {
     var req http.Request
     req.Method = "DELETE"
     req.Header = http.Header{}
-    req.UserAgent = defaultUserAgent
+    req.Header.Set("User-Agent", defaultUserAgent)
     return &HttpRequestBuilder{url, &req, nil, map[string]string{}}
 }
 
@@ -130,9 +144,9 @@ func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
     if b.params != nil && len(b.params) > 0 {
         var buf bytes.Buffer
         for k, v := range b.params {
-            buf.WriteString(http.URLEscape(k))
+            buf.WriteString(url.QueryEscape(k))
             buf.WriteByte('=')
-            buf.WriteString(http.URLEscape(v))
+            buf.WriteString(url.QueryEscape(v))
             buf.WriteByte('&')
         }
         paramBody = buf.String()
