@@ -1,6 +1,6 @@
 
 ## About
-httplib.go is a simple extension of Go's http client that provides keep-alive connections and generic requests.
+httplib.go is a simple extension of Go's http client that provides a nice fluid interface for building HTTP requests
 
 ## Usage
 
