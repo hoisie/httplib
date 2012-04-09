@@ -3,13 +3,14 @@ package httplib
 import (
     "bytes"
     "crypto/tls"
-    "http"
     "io"
     "io/ioutil"
     "net"
+    "net/http"
+    "net/http/httputil"
+    "net/url"
     "os"
     "strings"
-    "url"
 )
 
 var defaultUserAgent = "httplib.go"
@@ -17,7 +18,7 @@ var defaultUserAgent = "httplib.go"
 var debugprint = false
 
 type Client struct {
-    conn    *http.ClientConn
+    conn    *httputil.ClientConn
     lastURL *url.URL
 }
 
@@ -25,7 +26,7 @@ type nopCloser struct {
     io.Reader
 }
 
-func (nopCloser) Close() os.Error { return nil }
+func (nopCloser) Close() error { return nil }
 
 func getNopCloser(buf *bytes.Buffer) nopCloser {
     return nopCloser{buf}
@@ -33,7 +34,7 @@ func getNopCloser(buf *bytes.Buffer) nopCloser {
 
 func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastIndex(s, "]") }
 
-func newConn(url *url.URL) (*http.ClientConn, os.Error) {
+func newConn(url *url.URL) (*httputil.ClientConn, error) {
     addr := url.Host
     //just set the default scheme to http
     if url.Scheme == "" {
@@ -43,7 +44,7 @@ func newConn(url *url.URL) (*http.ClientConn, os.Error) {
         addr += ":" + url.Scheme
     }
     var conn net.Conn
-    var err os.Error
+    var err error
     if url.Scheme == "http" {
         conn, err = net.Dial("tcp", addr)
         if err != nil {
@@ -63,10 +64,10 @@ func newConn(url *url.URL) (*http.ClientConn, os.Error) {
         }
     }
 
-    return http.NewClientConn(conn, nil), nil
+    return httputil.NewClientConn(conn, nil), nil
 }
 
-func getResponse(rawUrl string, req *http.Request) (*http.ClientConn, *http.Response, os.Error) {
+func getResponse(rawUrl string, req *http.Request) (*httputil.ClientConn, *http.Response, error) {
     url, err := url.Parse(rawUrl)
     if url.Scheme == "" {
         rawUrl = "http://" + rawUrl
@@ -78,22 +79,22 @@ func getResponse(rawUrl string, req *http.Request) (*http.ClientConn, *http.Resp
     }
     req.URL = url
     if debugprint {
-        dump, err := http.DumpRequest(req, true)
+        dump, err := httputil.DumpRequest(req, true)
         if err != nil {
-            println(err.String())
+            println(err.Error())
         }
         print(string(dump))
     }
 
     conn, err := newConn(url)
     if err != nil {
-        println(err.String())
+        println(err.Error())
         return nil, nil, err
     }
 
     resp, err := conn.Do(req)
     if err != nil {
-        if err != http.ErrPersistEOF {
+        if err != httputil.ErrPersistEOF {
             return nil, nil, err
         }
     }
@@ -135,11 +136,11 @@ func Delete(url string) *HttpRequestBuilder {
 type HttpRequestBuilder struct {
     url        string
     req        *http.Request
-    clientConn *http.ClientConn
+    clientConn *httputil.ClientConn
     params     map[string]string
 }
 
-func (b *HttpRequestBuilder) getResponse() (*http.Response, os.Error) {
+func (b *HttpRequestBuilder) getResponse() (*http.Response, error) {
     var paramBody string
     if b.params != nil && len(b.params) > 0 {
         var buf bytes.Buffer
@@ -191,7 +192,7 @@ func (b *HttpRequestBuilder) Body(data interface{}) *HttpRequestBuilder {
     return b
 }
 
-func (b *HttpRequestBuilder) AsString() (string, os.Error) {
+func (b *HttpRequestBuilder) AsString() (string, error) {
     resp, err := b.getResponse()
     if err != nil {
         return "", err
@@ -207,7 +208,7 @@ func (b *HttpRequestBuilder) AsString() (string, os.Error) {
     return string(data), nil
 }
 
-func (b *HttpRequestBuilder) AsBytes() ([]byte, os.Error) {
+func (b *HttpRequestBuilder) AsBytes() ([]byte, error) {
     resp, err := b.getResponse()
     if err != nil {
         return nil, err
@@ -223,7 +224,7 @@ func (b *HttpRequestBuilder) AsBytes() ([]byte, os.Error) {
     return data, nil
 }
 
-func (b *HttpRequestBuilder) AsFile(filename string) os.Error {
+func (b *HttpRequestBuilder) AsFile(filename string) error {
     f, err := os.Create(filename)
     if err != nil {
         return err
@@ -244,7 +245,7 @@ func (b *HttpRequestBuilder) AsFile(filename string) os.Error {
     return nil
 }
 
-func (b *HttpRequestBuilder) AsResponse() (*http.Response, os.Error) {
+func (b *HttpRequestBuilder) AsResponse() (*http.Response, error) {
     return b.getResponse()
 }
 
